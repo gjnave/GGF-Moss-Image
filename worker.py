@@ -42,7 +42,7 @@ def main(request):
     if not torch.cuda.is_available():
         raise RuntimeError('An NVIDIA CUDA GPU is required.')
     for category in ['diffusion_models', 'text_encoders', 'vae', 'loras']:
-        (MODEL_DIR / category).mkdir(exist_ok=True)
+        (MODEL_DIR / category).mkdir(parents=True,exist_ok=True)
         folder_paths.add_model_folder_path(category, str(MODEL_DIR / category), is_default=True)
     flow = json.loads((APP / 'workflow.json').read_text())
     began = time.monotonic()
