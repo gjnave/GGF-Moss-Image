@@ -4,8 +4,8 @@ from __future__ import annotations
 import io
 import json
 import shutil
+import subprocess
 import sys
-import urllib.request
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -23,9 +23,13 @@ REQUIRED = {"app.py", "worker.py", "model_store.py", "models.json", "update.py",
 
 
 def _read(url: str) -> bytes:
-    request = urllib.request.Request(url, headers={"User-Agent": "GGF-Moss-Image-Updater/1.0"})
-    with urllib.request.urlopen(request, timeout=120) as response:
-        return response.read()
+    # Use the same Windows HTTP stack as the tested CMD bootstrap, with a total deadline.
+    result = subprocess.run(['curl.exe','--fail','--location','--silent','--show-error',
+        '--connect-timeout','20','--max-time','180',url],capture_output=True,
+        creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+    if result.returncode:
+        raise RuntimeError('Repository download failed: '+result.stderr.decode('utf-8',errors='replace').strip())
+    return result.stdout
 
 
 def source() -> tuple[str, str, bytes]:
