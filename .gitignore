@@ -1,0 +1,12 @@
+.venv/
+runtime/
+models/
+jobs/
+outputs/
+access.json
+model-settings.json
+update-backups/
+__pycache__/
+*.pyc
+*.log
+installer-cache/
