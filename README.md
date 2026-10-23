@@ -52,7 +52,7 @@ beside `GGF-Moss-Image/`. Setup provisions uv 0.12.13, managed Python 3.12,
 a private environment and CUDA 12.8 PyTorch.
 No system Python or Git is required. Setup executes a real CUDA matrix operation
 before reporting success. Model selection and downloading take place in Settings.
-The first launch opens Settings and Liz's guide when the selected model is missing.
+The first launch opens Settings and L/iZ's guide when the selected model is missing.
 Choose Smaller (INT8) or Larger (BF16), click Install / resume, and wait for the
 green Installed message before opening Create. Later launches open Create when
 the selected model is installed. Downloads resume partial files and verify size

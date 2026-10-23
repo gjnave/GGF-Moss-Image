@@ -467,11 +467,11 @@ def build_ui():
                         with gr.Row():
                             guide_clip=APP/'assets/liz-moss-setup.mp4'
                             if guide_clip.is_file():
-                                gr.Video(str(guide_clip),label='Liz · getting started',interactive=False,
+                                gr.Video(str(guide_clip),label='L/iZ · getting started',interactive=False,
                                          autoplay=False,height=225,buttons=[])
                             else:
-                                gr.Image(str(APP/'assets/liz-guide.png'),label='Liz · getting started',interactive=False,height=225,buttons=[])
-                            gr.Markdown('### Liz’s quick start\n**Before you can create pictures, download a model below.** '
+                                gr.Image(str(APP/'assets/liz-guide.png'),label='L/iZ · getting started',interactive=False,height=225,buttons=[])
+                            gr.Markdown('### L/iZ’s quick start\n**Before you can create pictures, download a model below.** '
                                 'Choose Smaller for less disk space and memory, or Larger for full precision. '
                                 'Click Install / resume and wait for the green **Installed** message. Then open Create. '
                                 'Once your selected model is installed, the app opens to Create next time.')
