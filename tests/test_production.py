@@ -17,6 +17,10 @@ spec.loader.exec_module(ui)
 
 
 class ProductionTests(unittest.TestCase):
+    def test_required_backend_model_code_is_packaged(self):
+        backend=Path(__file__).resolve().parents[1]/'vendor/comfy_core/comfy/ldm/models/autoencoder.py'
+        self.assertTrue(backend.is_file(),'Backend Python modules must not be excluded with model weights.')
+
     def test_all_presets_and_turbo_use_supported_grid_and_area(self):
         for name,size in SHAPES.items():
             if size:
