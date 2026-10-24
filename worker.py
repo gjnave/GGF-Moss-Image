@@ -18,18 +18,26 @@ def emit(**fields):
 
 def main(request):
     from model_store import MODEL_DIR, verify, model_names
+    from fast_mode import configure, ready as fast_ready, attach_adapter
+    from validation import validate
+    import custom_models
+    request = configure(validate(request))
     variant = request.get('model', 'int8')
-    ready, note = verify(variant=variant)
+    custom, custom_notes = custom_models.resolve(variant, request.get('generation_mode','standard'),
+        settings=request.get('_custom_models'))
+    ready, note = (custom_models.ready(variant,request.get('generation_mode','standard'),custom) if custom else
+        fast_ready() if request.get('generation_mode') == 'fast4' else verify(variant=variant))
     if not ready:
         raise RuntimeError(note + ' Open Settings and install the selected model.')
-    from validation import validate
-    request = validate(request)
     from prompt_example import layout_prompt
     prepared_prompt, structured = layout_prompt(request['prompt'], request['width'], request['height'],request.get('layout_source'))
     names = model_names(variant)
     core = APP / 'vendor/comfy_core'
     sys.path.insert(0, str(core))
     sys.argv = [sys.argv[0], '--models-directory', str(MODEL_DIR), '--disable-mmap']
+    if request.get('generation_mode') == 'fast4':
+        # The separate FP32 adapter hooks allocate temporary tensors per call.
+        sys.argv.append('--disable-comfy-compiler')
     os.chdir(core)
     # Upstream app.governance is a package; this worker never imports our app.py.
     import torch
@@ -44,6 +52,10 @@ def main(request):
     for category in ['diffusion_models', 'text_encoders', 'vae', 'loras']:
         (MODEL_DIR / category).mkdir(parents=True,exist_ok=True)
         folder_paths.add_model_folder_path(category, str(MODEL_DIR / category), is_default=True)
+    names = custom_models.register(folder_paths, variant, custom)
+    request['models_used'] = {category:custom.get(category,str(MODEL_DIR/category/name)) for category,name in names.items()}
+    for message in request.get('_custom_notes',[]) + custom_notes:
+        emit(status=message)
     flow = json.loads((APP / 'workflow.json').read_text())
     began = time.monotonic()
     emit(status='Loading the image text encoder…')
@@ -71,10 +83,14 @@ def main(request):
         mm.soft_empty_cache()
         emit(status='Loading MOSS image model…')
         model = nodes.UNETLoader().load_unet(names['diffusion_models'], 'default')[0]
-        if request['lora'] != 'None':
-            lora_path = (MODEL_DIR / 'loras' / request['lora']).resolve()
-            if not lora_path.is_relative_to((MODEL_DIR / 'loras').resolve()) or not lora_path.is_file():
+        if request.get('generation_mode') == 'fast4':
+            emit(status='Applying 4-step acceleration · precision-preserving adapter…')
+            model = attach_adapter(model)
+        if custom.get('lora') or request['lora'] != 'None':
+            lora_path = Path(custom['lora']) if custom.get('lora') else (MODEL_DIR / 'loras' / request['lora']).resolve()
+            if not custom.get('lora') and (not lora_path.is_relative_to((MODEL_DIR / 'loras').resolve()) or not lora_path.is_file()):
                 raise ValueError('Selected LoRA is missing from this app.')
+            request['lora_used'] = str(lora_path)
             import comfy.sd, comfy.utils
             weights = comfy.utils.load_torch_file(str(lora_path), safe_load=True)
             model, _ = comfy.sd.load_lora_for_models(model, None, weights, request['lora_strength'], 0)
@@ -90,7 +106,7 @@ def main(request):
         latent_preview.prepare_callback = callback_factory
         emit(status='Generating the image…')
         samples = nodes.KSampler().sample(model=model, seed=request['seed'],
-            steps=request['steps'], cfg=request['cfg'], sampler_name='er_sde', scheduler='simple',
+            steps=request['steps'], cfg=request['cfg'], sampler_name=request['sampler'], scheduler='simple',
             positive=positive, negative=negative, latent_image=latent, denoise=1.0)[0]
         del model
         mm.unload_all_models()

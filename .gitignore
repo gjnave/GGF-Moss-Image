@@ -5,6 +5,7 @@
 /outputs/
 /access.json
 /model-settings.json
+/custom-models.json
 /update-backups/
 __pycache__/
 *.pyc

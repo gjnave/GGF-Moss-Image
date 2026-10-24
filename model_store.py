@@ -62,13 +62,17 @@ def verify(full=False, variant=None):
 
 
 def _verify(full=False, variant=None):
+    return verify_entries(model_files(variant), full)
+
+
+def verify_entries(entries, full=False):
     receipt_path = MODEL_DIR / 'verified.json'
     try:
         receipt = json.loads(receipt_path.read_text())
     except (OSError, ValueError):
         receipt = {}
     stamps = dict(receipt)
-    for entry in model_files(variant):
+    for entry in entries:
         path = MODEL_DIR / entry['path']
         if not path.is_file() or path.stat().st_size != entry['size']:
             return False, 'Missing or incomplete: ' + entry['path']
@@ -87,9 +91,12 @@ def _verify(full=False, variant=None):
 
 def download(variant=None, progress=None, cancel=None):
     variant = variant or selected_model()
+    download_files(model_files(variant), progress, cancel)
+
+
+def download_files(entries, progress=None, cancel=None):
     notify = progress or (lambda message: print(message, flush=True))
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
-    entries = model_files(variant)
     for entry in entries:
         if cancel is not None and cancel.is_set():
             raise InterruptedError('Download stopped. Partial files are kept; click Install to resume.')
@@ -101,6 +108,14 @@ def download(variant=None, progress=None, cancel=None):
                 continue
             # Preserve an unexpected file; never delete customer data.
             target.rename(target.with_name(target.name + f'.unverified-{time.time_ns()}'))
+        if entry.get('prepare'):
+            if entry['prepare'] != 'heretic_encoder':
+                raise RuntimeError('Unknown model preparation recipe.')
+            from prepare_heretic_encoder import main as prepare_encoder
+            prepare_encoder(progress=notify, cancel=cancel)
+            if not target.is_file() or target.stat().st_size != entry['size'] or digest(target) != entry['sha256']:
+                raise RuntimeError('Prepared encoder failed size/SHA-256 verification.')
+            continue
         partial = target.with_name(target.name + '.partial')
         if partial.is_file() and partial.stat().st_size >= entry['size']:
             if partial.stat().st_size == entry['size'] and digest(partial) == entry['sha256']:
@@ -108,7 +123,9 @@ def download(variant=None, progress=None, cancel=None):
                 continue
             partial.rename(partial.with_name(partial.name + f'.unverified-{time.time_ns()}'))
         revision = entry.get('revision', MANIFEST['revision'])
-        url = f"https://huggingface.co/{MANIFEST['repo']}/resolve/{revision}/{entry['path']}"
+        repo = entry.get('repo', MANIFEST['repo'])
+        remote_path = entry.get('remote_path', entry['path'])
+        url = f"https://huggingface.co/{repo}/resolve/{revision}/{remote_path}"
         notify('Downloading / resuming ' + target.name)
         # Curl's errors are retained on disk, never buffered into an unread PIPE.
         with partial.with_suffix('.download.log').open('a', encoding='utf-8') as log:
@@ -134,7 +151,8 @@ def download(variant=None, progress=None, cancel=None):
         if partial.stat().st_size != entry['size'] or digest(partial) != entry['sha256']:
             raise RuntimeError('Download did not pass size/SHA-256 verification: ' + target.name)
         partial.rename(target)
-    ready, note = verify(full=True, variant=variant)
+    with RECEIPT_LOCK:
+        ready, note = verify_entries(entries, full=True)
     notify(note)
     if not ready:
         raise RuntimeError(note)

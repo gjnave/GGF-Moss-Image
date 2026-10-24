@@ -1,8 +1,8 @@
-# GGF Image Maker
+# Moss Image
 
-[![Get Going Fast image maker](assets/moss-image-1.png)](https://getgoingfast.pro/tools/)
+[![Moss Image](assets/moss-image-1.png)](https://getgoingfast.pro/tools/moss-image/)
 
-[Get Going Fast — app catalog, membership and member quick installers](https://getgoingfast.pro/tools/)
+[Get Going Fast — app page and member quick installer](https://getgoingfast.pro/tools/moss-image/)
 
 A local text-to-image application built around the supplied MOSS-Image workflow.
 It uses selected Comfy inference modules inside its own disposable Python worker.
@@ -61,13 +61,52 @@ and SHA-256 against pinned publisher metadata. No model weights belong in a ZIP.
 Then double-click **RUN.bat**. The local page opens automatically, without login.
 An NVIDIA GPU and a compatible driver are required. The real validation hardware
 and measured results are recorded in the accompanying validation report.
-Allow at least 30 GB free for the smaller setup, more for the larger model and
-installation cache. Smaller downloads total 13,006,811,386 bytes; Larger totals
-17,757,768,236 bytes. Both are the same 5B SFT image model at different precision,
+Allow at least 70 GB free for model preparation, dependencies and installation
+cache. Model downloads are about 25.0 GB for Smaller or 29.7 GB for Larger.
+Both use **Heretic Qwen3.5-9B BF16** as their default text encoder. Settings downloads
+four pinned, SHA-256-verified parts from
+[pottokao/MOSS-Image-Text-Encoder-Heretic](https://huggingface.co/pottokao/MOSS-Image-Text-Encoder-Heretic)
+and automatically combines them into one verified file without changing weights
+or running remote model code. Keep the app open until the green Installed message.
+The source parts are retained (about 19.3 GB additional disk space); nothing is
+deleted automatically. Existing custom encoder selections remain in effect;
+clear the custom encoder field and save to use the new default. This encoder
+change is not a promised speed or image-quality improvement; caption validation
+remains enabled. Both image choices are the same 5B SFT image model at different precision,
 not different parameter counts. They use the same app-local text encoder and VAE.
 Both image files can remain installed; switching does not remove either one.
 
 ## Create
+
+### Custom model files and LoRAs
+
+Settings includes full-path fields with native PC **Browse** buttons for a MOSS
+image model, Qwen3.5 text encoder, FLUX.2 VAE, and optional MOSS LoRA. Choose a
+compatible `.safetensors` file, then click **Save custom model paths**. Blank,
+missing, corrupt, or wrong-category selections fall back to the normal defaults.
+Files remain where they are; the app does not copy or move them. Browse and Save
+are restricted to the local PC page, while saved choices work for phone generation.
+The custom LoRA takes precedence over the Create dropdown and uses its strength
+slider. Clear and save the path to stop using it. Fast's image model must match
+the verified SFT BF16 base, and Fast always uses its own acceleration adapter;
+other custom image models and custom LoRAs apply only in Standard. Custom text
+encoders and VAEs can be used in either mode. Header checks establish file type,
+not the quality or trustworthiness of third-party weights. Actual selected model
+paths are recorded in each output image's metadata.
+
+### Optional Fast mode (local experimental test)
+
+In Settings, click **Install / resume 4-step acceleration**. This adds the BF16
+SFT image model and a pinned 1.2 GB Apache-2.0 adapter from
+[akhaliq/MOSS-Image-SFT-4-steps](https://huggingface.co/akhaliq/MOSS-Image-SFT-4-steps).
+It reuses this app's encoder and VAE; nothing is removed. Wait for **Fast mode
+installed**, then choose **Fast** on Create. It uses 4 steps, Euler/simple, CFG 1,
+no layer guidance or negative prompt, and at most 1 megapixel. Additional LoRAs
+are disabled in this mode. The BF16 base keeps separate FP32 adapter calculations,
+including fused Q/K/V projections, to avoid rounding the small changes into the
+base weights. Model loading and optional caption expansion still take time.
+Standard mode retains the original workflow and selected model. Fast is not the
+same as the existing half-size Turbo preview. This test has not been published.
 
 The initial prompt is a Get Going Fast branded JSON poster example. Its layout
 boxes automatically scale to the selected canvas, including Turbo previews.
@@ -84,7 +123,7 @@ does not extract an alternative from a refusal or retry the original prompt.
 The full reply stays in the private job log; the page shows a short status.
 
 The lower-resolution default is 768×768. The sampling settings are retained: 25 steps, CFG 2.5,
-ER-SDE sampler, simple schedule, full denoise, seed 0, and its exact negative
+ER-SDE sampler, simple schedule, full denoise, random image seed (-1), and its exact negative
 prompt. Layer guidance is off; enabling it skips layer 22 on the negative pass
 over the first half of sampling. No LoRA is applied by default because the
 workflow's Power LoRA Loader has no active LoRA entries. Optional compatible

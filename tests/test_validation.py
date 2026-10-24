@@ -8,8 +8,10 @@ from validation import validate
 class ValidationTests(unittest.TestCase):
     def test_workflow_defaults(self):
         value=validate({'prompt':'A red book'})
-        self.assertEqual((value['width'],value['height'],value['steps'],value['cfg'],value['seed']),
-                         (768,768,25,2.5,0))
+        self.assertEqual((value['width'],value['height'],value['steps'],value['cfg']),
+                         (768,768,25,2.5))
+        self.assertGreaterEqual(value['seed'],0)
+        self.assertLess(value['seed'],2**32)
         self.assertTrue(value['enhance'])
         self.assertFalse(value['slg'])
         self.assertEqual(value['lora'],'None')

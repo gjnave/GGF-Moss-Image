@@ -65,7 +65,7 @@ def update() -> str:
             if len(parts) < 2 or ".." in parts or "\\" in item.filename or ":" in item.filename:
                 raise ValueError(f"Unsafe source archive path: {item.filename}")
             relative = Path(*parts[1:])
-            if relative.parts[0] in {"models", "outputs", "jobs", "runtime", ".venv", "update-backups", "access.json", "model-settings.json"}:
+            if relative.parts[0] in {"models", "outputs", "jobs", "runtime", ".venv", "update-backups", "access.json", "model-settings.json", "custom-models.json"}:
                 raise ValueError(f"Source archive contains app data: {relative}")
             files[str(relative).replace("\\", "/")] = item
         if not REQUIRED.issubset(files):

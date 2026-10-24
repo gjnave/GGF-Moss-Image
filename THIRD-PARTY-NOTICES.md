@@ -10,6 +10,11 @@
   under GPL-3.0 consistently with these embedded modules. This package is not
   endorsed by Comfy Org or OpenMOSS.
 - Gradio: https://github.com/gradio-app/gradio, Apache-2.0.
+- Default Qwen3.5 text encoder: https://huggingface.co/pottokao/MOSS-Image-Text-Encoder-Heretic,
+  Apache-2.0. Pinned upstream shards are downloaded separately and repacked
+  without changing weights; no model weights are distributed in the installer.
+- Optional 4-step adapter: https://huggingface.co/akhaliq/MOSS-Image-SFT-4-steps,
+  Apache-2.0. Downloaded separately; its FP32 deltas remain unmerged on the BF16 base.
 - Transformers: https://github.com/huggingface/transformers, Apache-2.0.
 - PyTorch: https://github.com/pytorch/pytorch, BSD-style license.
 - uv: https://github.com/astral-sh/uv, MIT or Apache-2.0.

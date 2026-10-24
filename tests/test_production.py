@@ -77,8 +77,9 @@ class ProductionTests(unittest.TestCase):
         self.assertIn('bf16',model_store.model_names('bf16')['diffusion_models'])
         self.assertEqual(model_store.model_names('bf16')['text_encoders'],
                          model_store.model_names('int8')['text_encoders'])
-        self.assertEqual(sum(x['size'] for x in small),13006811386)
-        self.assertEqual(sum(x['size'] for x in large),17757768236)
+        self.assertEqual(sum(x['size'] for x in small),24969532754)
+        self.assertEqual(sum(x['size'] for x in large),29720489604)
+        self.assertEqual(model_store.model_names('int8')['text_encoders'],'qwen3.5_9b_heretic_bf16.safetensors')
         with self.assertRaises(ValueError):
             model_store.model_files('../../bad')
 

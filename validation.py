@@ -8,7 +8,7 @@ def validate(data):
     data['prompt'] = str(data.get('prompt','')).strip()
     if not data['prompt']:
         raise ValueError('Describe the image you want to create.')
-    for name, default in [('width',DEFAULT_SIZE),('height',DEFAULT_SIZE),('steps',25),('seed',0),('enhance_seed',0)]:
+    for name, default in [('width',DEFAULT_SIZE),('height',DEFAULT_SIZE),('steps',25),('seed',-1),('enhance_seed',0)]:
         value = float(data.get(name,default))
         if not math.isfinite(value) or int(value) != value:
             raise ValueError(name + ' must be a whole number.')

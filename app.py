@@ -1,4 +1,4 @@
-"""GGF Image Maker: purpose-built MOSS workflow, app-owned one-shot GPU workers."""
+"""Moss Image: purpose-built MOSS workflow, app-owned one-shot GPU workers."""
 from __future__ import annotations
 import argparse
 import atexit
@@ -17,11 +17,21 @@ import time
 import uuid
 import gradio as gr
 from access import MODES, load as load_access, save as save_access, verify as verify_access
-from model_store import APP, MODEL_DIR, VARIANTS, verify, download, selected_model, select_model, model_files
+from model_store import APP, MODEL_DIR, VARIANTS, download, selected_model, select_model, model_files
 from validation import validate
 from caption_output import display_caption
 from dimensions import SHAPES, DEFAULT_SHAPE, DEFAULT_SIZE, MIN_EDGE, MAX_EDGE, preview_dimensions, validate_dimensions
 from prompt_example import DEFAULT_PROMPT, layout_prompt
+from fast_mode import MODES as GENERATION_MODES, configure as configure_mode, install as install_fast
+import custom_models
+
+
+def verify(variant=None):
+    return custom_models.ready(variant=variant)
+
+
+def fast_ready():
+    return custom_models.ready(mode='fast4')
 
 JOBS = APP/'jobs'
 OUTPUTS = APP/'outputs'
@@ -37,8 +47,8 @@ PHONE_LINK = 'Off. Enable phone access in Settings and restart.'
 DOWNLOAD = None
 DOWNLOAD_NOTE = ''
 CONTROL_NAMES = ['prompt','width','height','negative','steps','cfg','seed','enhance','slg',
-                 'enhance_seed','lora','lora_strength','count']
-DEFAULTS = [DEFAULT_PROMPT,DEFAULT_SIZE,DEFAULT_SIZE,'worst quality, bad anatomy, watermark, jpeg artifact',25,2.5,0,True,False,0,'None',1.0,1]
+                 'enhance_seed','lora','lora_strength','count','generation_mode']
+DEFAULTS = [DEFAULT_PROMPT,DEFAULT_SIZE,DEFAULT_SIZE,'worst quality, bad anatomy, watermark, jpeg artifact',25,2.5,-1,True,False,0,'None',1.0,1,'standard']
 CSS = (APP/'ui.css').read_text(encoding='utf-8') + '''
 #ggf-hero img {float:left;width:68px;margin:0 18px 10px 0;}
 #ggf-status {min-height:54px;} #ggf-status progress {width:180px;}
@@ -106,6 +116,12 @@ def model_panel():
         body = f'<div class="{css}">{label} · {html.escape(VARIANTS[variant]["label"])}<br>{html.escape(note)}</div>'
         if message:
             body += '<p>' + html.escape(message) + '</p>'
+        custom, notes = custom_models.resolve(variant)
+        if custom:
+            body += '<p>Custom overrides active: ' + html.escape(', '.join(custom)) + '.</p>'
+        for note in notes:
+            if 'Default used:' in note:
+                body += '<p>' + html.escape(note) + '</p>'
     return body, gr.update(interactive=not downloading and not busy), gr.update(interactive=downloading)
 
 
@@ -121,7 +137,7 @@ def change_model(variant):
         'Now click Install / resume below. The app will not substitute another model.')
 
 
-def install_models():
+def install_models(fast=False):
     global DOWNLOAD, DOWNLOAD_NOTE
     with LOCK:
         if ACTIVE or DOWNLOAD or STOPPING:
@@ -137,7 +153,10 @@ def install_models():
     def run():
         global DOWNLOAD
         try:
-            download(variant, progress=update, cancel=job['cancel'])
+            if fast:
+                install_fast(progress=update, cancel=job['cancel'])
+            else:
+                download(variant, progress=update, cancel=job['cancel'])
             update('✓ Installed. Your selected model is ready — open Create to make an image.')
         except Exception as error:
             update(str(error))
@@ -220,7 +239,8 @@ def refresh(token):
         display={**data,'status':'Previous run interrupted. Saved images remain available.'}
     with LOCK:
         downloading = DOWNLOAD is not None
-    ready = False if downloading else verify()[0]
+    fast = data.get('controls',{}).get('generation_mode') == 'fast4'
+    ready = False if downloading else (fast_ready()[0] if fast else verify()[0])
     label='Generating…' if busy else 'Generate image · Ctrl+Enter'
     return (saved_results(data),status_html(display,busy),caption,
             gr.update(interactive=not busy and ready,value=label),gr.update(interactive=not busy and ready),
@@ -329,8 +349,10 @@ def submit(token,*args,preview=False):
             request['layout_source']=[request['width'],request['height']]
             request['width'],request['height']=preview_dimensions(request['width'],request['height'])
             count=1
+        request=configure_mode(request)
+        request['_custom_models'], request['_custom_notes']=custom_models.resolve(request['model'],request.get('generation_mode','standard'))
         layout_prompt(request['prompt'],request['width'],request['height'],request.get('layout_source'))
-        ready,note=verify(variant=request['model'])
+        ready,note=fast_ready() if request.get('generation_mode') == 'fast4' else verify(variant=request['model'])
         if not ready:
             raise ValueError(note+' Open Settings and install the selected model.')
         with LOCK:
@@ -340,7 +362,7 @@ def submit(token,*args,preview=False):
                 raise RuntimeError('This PC already has an active generation.')
             if DOWNLOAD is not None:
                 raise RuntimeError('Wait for the model download to finish in Settings.')
-            if selected_model() != request['model']:
+            if request.get('generation_mode') != 'fast4' and selected_model() != request['model']:
                 raise RuntimeError('Model selection changed. Please generate again.')
             folder=JOBS/(time.strftime('%Y%m%d-%H%M%S')+'-'+uuid.uuid4().hex[:10])
             folder.mkdir(parents=True)
@@ -416,11 +438,11 @@ def theme():
 def build_ui():
     settings=load_access()
     logo=base64.b64encode((APP/'assets/ggf-brain-logo.png').read_bytes()).decode()
-    with gr.Blocks(title='GGF Image Maker') as demo:
+    with gr.Blocks(title='Moss Image') as demo:
         token=gr.BrowserState('',storage_key='ggf-moss-workspace-v1',secret='ggf-moss-local-workspace-v1')
         with gr.Column(elem_id='ggf-shell'):
             gr.HTML(f"<div id='ggf-hero'><img src='data:image/png;base64,{logo}' alt='Get Going Fast'>"
-                "<div class='kicker'>GET GOING FAST · LOCAL AI</div><h1>GGF Image Maker</h1>"
+                "<div class='kicker'>GET GOING FAST · LOCAL AI</div><h1>Moss Image</h1>"
                 "<p>Turn your ideas into pictures, posters and illustrated text.</p>"
                 "<div class='links'><a href='https://getgoingfast.pro' target='_blank'>GetGoingFast.pro ↗</a>"
                 "<a href='https://youtube.com/@TheAIHobbyGuy' target='_blank'>The AI Hobby Guy ↗</a></div></div>")
@@ -438,17 +460,22 @@ def build_ui():
                     size_note=gr.Markdown('768 × 768 · lower-resolution default. Choose a preset or adjust the sliders.')
                     gr.Markdown('Sizes use multiples of 16, within 0.25–4 megapixels. Invalid combinations are rejected before models load. Large images need more memory; 1088 is used instead of unsupported 1080.')
                     enhance=gr.Checkbox(value=True,label='Expand my idea into a detailed caption locally')
+                    generation_mode=gr.Dropdown([(label,key) for label,key in GENERATION_MODES.items()],
+                        value='standard',label='Generation mode')
+                    gr.Markdown('**Fast (experimental):** 4 steps, Euler, guidance 1, up to 1 megapixel. '
+                        'Uses the larger BF16 model plus its own acceleration adapter. Install it in Settings first. '
+                        'Standard keeps your original settings. Caption expansion and model loading still take time.')
                     with gr.Accordion('More control',open=False):
                         negative=gr.Textbox(value=DEFAULTS[3],label='Things to avoid')
                         with gr.Row():
                             steps=gr.Slider(1,100,value=25,step=1,label='Generation steps')
                             cfg=gr.Slider(0,15,value=2.5,step=0.1,label='Prompt guidance')
                         with gr.Row():
-                            seed=gr.Number(value=0,precision=0,label='Image seed · -1 for random')
+                            seed=gr.Number(value=-1,precision=0,label='Image seed · -1 for random')
                             enhance_seed=gr.Number(value=0,precision=0,label='Caption seed · -1 for random')
                             count=gr.Number(value=1,minimum=1,maximum=16,precision=0,label='Images · sequential')
                         slg=gr.Checkbox(value=False,label='Layer 22 guidance · first half of sampling')
-                        gr.Markdown('Layer guidance is off in your supplied workflow. Sampler: ER-SDE · schedule: simple.')
+                        gr.Markdown('Standard: ER-SDE / simple. Fast overrides these controls: 4 steps, Euler / simple, guidance 1, layer guidance off and no negative prompt.')
                         with gr.Row():
                             lora=gr.Dropdown(loras(),value='None',label='Optional LoRA')
                             strength=gr.Slider(-2,2,value=1,step=0.05,label='LoRA strength')
@@ -479,8 +506,9 @@ def build_ui():
                     model_choice=gr.Dropdown([(v['label'],k) for k,v in VARIANTS.items()],
                         value=selected_model(),label='Image model')
                     gr.Markdown('Both choices use MOSS-SFT’s 5B image model: INT8 is smaller; BF16 keeps full precision and needs more memory. '
-                        'The text encoder and VAE are downloaded once inside this app. Total downloads: about **13.0 GB** for Smaller or **17.8 GB** for Larger. '
-                        'Installing both keeps both image files; switching does not delete anything.')
+                        'The default text encoder is **Heretic Qwen3.5-9B BF16**; both choices use it. Total downloads: about **25.0 GB** for Smaller or **29.7 GB** for Larger. '
+                        'The app verifies four encoder parts and automatically prepares the usable encoder. Allow about **19.3 GB extra temporary disk space** for those retained parts. '
+                        'Installing both keeps both image files; switching does not delete anything. Custom model selections are preserved.')
                     selection_note=gr.Markdown()
                     model_status=gr.HTML(value=model_panel()[0],elem_id='ggf-model-installed')
                     install=gr.Button('Install / resume selected model and support files',variant='primary')
@@ -488,6 +516,35 @@ def build_ui():
                     download_stop_note=gr.Markdown()
                     check=gr.Button('Refresh installed status')
                     to_create=gr.Button('Open Create')
+                    gr.Markdown('### Use your own models (optional)\nBrowse for compatible **MOSS image**, **Qwen3.5 text encoder**, '
+                        '**FLUX.2 VAE**, or **MOSS LoRA** files on this PC. Nothing is uploaded, copied or moved. '
+                        'Blank, missing or invalid files fall back to the defaults. Browse and Save are available on the local PC only; '
+                        'saved choices also apply when generating from your phone. Fast mode only accepts the verified BF16 SFT image base '
+                        'and uses its own acceleration adapter; other image models and custom LoRAs apply in Standard.')
+                    custom_values=custom_models.load()
+                    custom_fields=[]
+                    custom_browse=[]
+                    for category,label in zip(custom_models.CATEGORIES,
+                            ['Image model · MOSS','Text encoder · Qwen3.5','VAE · FLUX.2','LoRA · MOSS (optional)']):
+                        with gr.Row():
+                            field=gr.Textbox(value=custom_values[category],label=label,placeholder='Default · or enter a full PC file path',scale=5)
+                            browse_button=gr.Button('Browse…',scale=1)
+                            clear_button=gr.Button('Clear',scale=1)
+                        custom_fields.append(field)
+                        custom_browse.append((browse_button,clear_button,field))
+                    custom_save=gr.Button('Save custom model paths')
+                    custom_note=gr.Markdown()
+                    gr.Markdown('Custom LoRA uses the **LoRA strength** slider under More control on Create, and takes priority over that dropdown. '
+                        'Clear its path and save to return to the dropdown / None. File checks do not guarantee the quality of third-party weights.')
+                    gr.Markdown('### Optional 4-step acceleration\nDownloads about **11.4 GB extra** if BF16 is not installed, '
+                        'or **1.2 GB** for the adapter if it is. Uses the existing text encoder and VAE. '
+                        'Nothing is deleted or substituted in Standard mode. Choose Fast on Create after installation.')
+                    def fast_status():
+                        installed,note=fast_ready()
+                        css='model-ready' if installed else 'model-missing'
+                        return f'<div class="{css}">{"✓ Fast mode installed" if installed else "Fast mode not installed"}<br>{html.escape(note)}</div>'
+                    fast_status_box=gr.HTML(value=fast_status())
+                    fast_install=gr.Button('Install / resume 4-step acceleration',variant='secondary')
                     gr.Markdown('### Use it from your phone')
                     mode=gr.Dropdown(list(MODES),value=next(k for k,v in MODES.items() if v==settings['mode']),label='Phone access')
                     username=gr.Textbox(value=settings['username'],label='Remote username · optional')
@@ -506,9 +563,17 @@ def build_ui():
                     shutdown_note=gr.Markdown()
             phone=gr.Markdown(elem_id='ggf-phone-status')
             gr.HTML("<div id='ggf-footer'>Powered by MOSS-Image · OpenMOSS · local Comfy inference modules.<br>Get Going Fast</div>")
-        controls=[prompt,width,height,negative,steps,cfg,seed,enhance,slg,enhance_seed,lora,strength,count]
+        controls=[prompt,width,height,negative,steps,cfg,seed,enhance,slg,enhance_seed,lora,strength,count,generation_mode]
         results=[gallery,status,expanded,generate,preview,phone]
         generate.click(submit,[token,*controls],results,queue=False,show_progress='hidden')
+        def mode_controls(mode):
+            fast=mode=='fast4'
+            return (gr.update(value=4 if fast else 25,interactive=not fast),
+                    gr.update(value=1.0 if fast else 2.5,interactive=not fast),
+                    gr.update(value=False,interactive=not fast),
+                    gr.update(value='None',interactive=not fast),
+                    gr.update(interactive=not fast))
+        generation_mode.input(mode_controls,generation_mode,[steps,cfg,slg,lora,negative],queue=False)
         preview.click(lambda *args:submit(*args,preview=True),[token,*controls],results,queue=False,show_progress='hidden')
         stop.click(stop_job,outputs=status,queue=False)
         saved.click(show_saved,token,results,queue=False)
@@ -527,8 +592,31 @@ def build_ui():
         gr.on([c.input for c in controls],save_controls,[token,*controls],queue=False)
         scan.click(lambda:gr.update(choices=loras(),value='None'),outputs=lora,queue=False)
         model_outputs=[model_status,install,cancel_download]
+        def require_local(request):
+            host=request.client.host if request and request.client else ''
+            forwarded=request.headers.get('x-forwarded-for','') if request else ''
+            if host not in ('127.0.0.1','::1') or (forwarded and forwarded.strip() not in ('127.0.0.1','::1')):
+                raise gr.Error('Choose model files on the local PC page, not the phone link.')
+        def browse_custom(request: gr.Request):
+            require_local(request)
+            with LOCK:
+                if ACTIVE or DOWNLOAD:
+                    raise gr.Error('Wait for generation or downloads to finish before choosing files.')
+            result=custom_models.browse()
+            return result if result else gr.update()
+        def save_custom(image_path,encoder_path,vae_path,lora_path, request: gr.Request):
+            require_local(request)
+            with LOCK:
+                if ACTIVE or DOWNLOAD:
+                    return 'Wait for generation or downloads to finish before changing models.'
+                return custom_models.save(image_path,encoder_path,vae_path,lora_path)
+        for browse_button,clear_button,field in custom_browse:
+            browse_button.click(browse_custom,outputs=field,queue=False)
+            clear_button.click(lambda:'',outputs=field,queue=False)
+        custom_save.click(save_custom,custom_fields,custom_note,queue=False)
         model_choice.change(change_model,model_choice,[model_choice,selection_note],queue=False)
         install.click(install_models,outputs=model_outputs,queue=False)
+        fast_install.click(lambda:install_models(fast=True),outputs=model_outputs,queue=False)
         cancel_download.click(stop_download,outputs=download_stop_note,queue=False)
         check.click(model_panel,outputs=model_outputs,queue=False)
         to_create.click(lambda:gr.update(selected='create'),outputs=tabs,queue=False)
@@ -539,6 +627,7 @@ def build_ui():
         timer=gr.Timer(1)
         timer.tick(refresh,token,results,queue=False,show_progress='hidden')
         timer.tick(model_panel,outputs=model_outputs,queue=False,show_progress='hidden')
+        timer.tick(fast_status,outputs=fast_status_box,queue=False,show_progress='hidden')
         demo.load(restore,token,[token,*controls,*results,tabs,shape],queue=False,js=SHORTCUT)
     return demo
 
